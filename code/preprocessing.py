@@ -6,7 +6,7 @@ import spacy
 
 max_length = 0
 max_qa = ''
-paths = ["./data/train-v1.1.json", "./data/dev-v1.1.json"]
+paths = ["../data/train-v1.1.json", "../data/dev-v1.1.json"]
 count = 0
 processed_questions = []
 processed_answers = []
@@ -31,8 +31,8 @@ for path in paths:
                     processed_questions.append(question)
                     processed_answers.append(answer)
                 count += 1
-                if (count % 100 == 0):
-                    print("Data point #", count)
+                # if (count % 100 == 0):
+                #     print("Data point #", count)
 #     print(count)
 print(processed_questions[:10])
 print(processed_answers[:10])
@@ -41,12 +41,12 @@ print(processed_answers[-10:])
 # put the processed questions and answers into a file
 
 # Trivia QA dataset
-trivia_paths = ["./data/qa/wikipedia-train.json", "./data/qa/wikipedia-dev.json", "./data/qa/web-train.json",
-                "./data/qa/web-dev.json", \
-                "./data/qa/verified-web-dev.json", "./data/qa/verified-wikipedia-dev.json"]
+trivia_paths = ["../data/qa/wikipedia-train.json", "../data/qa/wikipedia-dev.json", "../data/qa/web-train.json",
+                "../data/qa/web-dev.json", \
+                "../data/qa/verified-web-dev.json", "../data/qa/verified-wikipedia-dev.json"]
 for trivia_path in trivia_paths:
     with open(trivia_path, 'r', encoding='utf-8') as datafile:
-        trivia_data = json.load(datafile, encoding='u')['Data']
+        trivia_data = json.load(datafile)['Data']
     #     count = 0
     for qa in trivia_data:
         answer = qa['Answer']['Aliases'][0]
@@ -55,8 +55,8 @@ for trivia_path in trivia_paths:
             processed_questions.append(question)
             processed_answers.append(answer)
         count += 1
-        if (count % 100 == 0):
-            print("Data point #", count)
+        # if (count % 100 == 0):
+        #     print("Data point #", count)
 #     print(count)
 print('Final count:', count)
 print(processed_questions[:10])
@@ -88,8 +88,8 @@ def tokenize(sentences):
     return parsed_sentences
 
 
-processed_questions = tokenize(processed_questions)
-processed_answers = tokenize(processed_answers)
+# processed_questions = tokenize(processed_questions)
+# processed_answers = tokenize(processed_answers)
 
 """ # dictionary of lists
 dict = {'questions': processed_questions, 'answers': processed_answers}
@@ -227,4 +227,4 @@ def get_data(X_train, X_val, y_train, y_val):
     return ANSWER_train_data, ANSWER_test_data, QUESTION_train_data, QUESTION_test_data, ANSWER_vocab, QUESTION_vocab, ANSWER_pad_id
 
 
-get_data(X_train, X_val, y_train, y_val)
+# get_data(X_train, X_val, y_train, y_val)
