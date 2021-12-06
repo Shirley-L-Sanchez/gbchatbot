@@ -2,7 +2,8 @@ import tensorflow as tf
 import tensorflow_hub as hub
 import tensorflow_text as text
 from official.nlp import optimization  # to create AdamW optimizer
-from preprocessing import X_train, X_test, X_val, y_train, y_test, y_val
+# from preprocessing import X_train, X_test, X_val, y_train, y_test, y_val
+from preprocessing import preprocess_data, train_val_test_split
 
 tf.get_logger().setLevel('ERROR')
 
@@ -170,13 +171,19 @@ def run_model(data):
     encoder_inputs = preprocessing_layer(data)
     outputs = encoder(encoder_inputs)
     net = outputs['pooled_output']
-    return
+    return net
 
 def get_sentences(data):
     result = []
     for sentence in data:
         new_sentence = sentence.split()
 
+processed_questions, processed_answers = preprocess_data()
+X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(processed_questions, processed_answers)
 
-run_model(X_test[:128])
+encoder_output = run_model(X_test[:128])
+
+print('encoder output:', encoder_output)
+print('encoder output shape:', encoder_output.shape)
+
 a = 1
