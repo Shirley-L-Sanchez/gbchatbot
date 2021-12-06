@@ -163,16 +163,20 @@ tfhub_handle_encoder, tfhub_handle_preprocess = choose_model('small_bert/bert_en
 # text_input = tf.keras.layers.Input(shape=(1, 1), dtype=tf.string, name='text')
 preprocessing_layer = hub.KerasLayer(tfhub_handle_preprocess, name='preprocessing')
 encoder = hub.KerasLayer(tfhub_handle_encoder, trainable=True, name='BERT_encoder')
+window_size = 160
 
-
-def run_model(data, values):
+def run_model(data):
     # processed_data = text_input(data)
     encoder_inputs = preprocessing_layer(data)
-    encoder = hub.KerasLayer(tfhub_handle_encoder, trainable=True, name='BERT_encoder')
     outputs = encoder(encoder_inputs)
     net = outputs['pooled_output']
     return
 
+def get_sentences(data):
+    result = []
+    for sentence in data:
+        new_sentence = sentence.split()
 
-run_model(X_test, X_val)
+
+run_model(X_test[:128])
 a = 1

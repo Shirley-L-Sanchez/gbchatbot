@@ -227,4 +227,5 @@ def get_data(X_train, X_val, y_train, y_val):
     return ANSWER_train_data, ANSWER_test_data, QUESTION_train_data, QUESTION_test_data, ANSWER_vocab, QUESTION_vocab, ANSWER_pad_id
 
 
-# get_data(X_train, X_val, y_train, y_val)
+a = get_data(X_train, X_val, y_train, y_val)
+b = 1
