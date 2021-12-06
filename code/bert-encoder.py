@@ -156,8 +156,8 @@ def choose_model(bert_model_name):
     return tfhub_handle_encoder, tfhub_handle_preprocess
 
 
-dataset_name = 'imdb'
-saved_model_path = './{}_bert'.format(dataset_name.replace('/', '_'))
+# dataset_name = 'imdb'
+# saved_model_path = './{}_bert'.format(dataset_name.replace('/', '_'))
 
 # Create a model
 tfhub_handle_encoder, tfhub_handle_preprocess = choose_model('small_bert/bert_en_uncased_L-4_H-512_A-8')
@@ -169,8 +169,12 @@ window_size = 160
 def run_model(data):
     # processed_data = text_input(data)
     encoder_inputs = preprocessing_layer(data)
+    print('encoder inputs after prerocessing model:', encoder_inputs)
     outputs = encoder(encoder_inputs)
     net = outputs['pooled_output']
+    print('number of outputs:', len(outputs))
+    print('pooled output shape:', outputs['pooled_output'].shape)
+    print('sequenced output shape:', outputs['sequence_output'].shape)
     return net
 
 def get_sentences(data):
@@ -182,8 +186,5 @@ processed_questions, processed_answers = preprocess_data()
 X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(processed_questions, processed_answers)
 
 encoder_output = run_model(X_test[:128])
-
-print('encoder output:', encoder_output)
-print('encoder output shape:', encoder_output.shape)
 
 a = 1

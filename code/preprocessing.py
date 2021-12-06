@@ -226,7 +226,7 @@ def get_data(X_train, X_val, y_train, y_val):
 
     return ANSWER_train_data, ANSWER_test_data, QUESTION_train_data, QUESTION_test_data, ANSWER_vocab, QUESTION_vocab, ANSWER_pad_id
 
-processed_questions, processed_answers = preprocess_data()
-X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(processed_questions, processed_answers)
+# processed_questions, processed_answers = preprocess_data()
+# X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(processed_questions, processed_answers)
 # a = get_data(X_train, X_val, y_train, y_val)
 # b = 1
