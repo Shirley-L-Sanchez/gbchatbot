@@ -148,7 +148,7 @@ class TransformerDecoder(tf.keras.Model):
         )
         return tf.tile(mask, mult)
 
-    def call(self, enc_out, target):
+    def call(self, target, enc_out=None):
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -166,12 +166,15 @@ class discriminator_supervised(tf.keras.Model):
     super(discriminator_supervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
     self.shared_layers = shared_layers
+    self.inputs = Input(shape=[seq_len, hidden_dim])
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
+
+
   
-  def call(self, enc_out, embeddings):
+  def call(self, target, enc_out=None):
     X = self.shared_layers(enc_out)
-    X = self.decoder.call(X, embeddings)
+    X = self.decoder.call(target, enc_out=X)
     X = self.dense(X)
     return X
 
@@ -184,7 +187,7 @@ class discriminator_supervised(tf.keras.Model):
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
     with tf.GradientTape() as tape:
-      probs = self.call(enc_out, answers[:,:-1,:])
+      probs = self(answers[:,:-1,:], enc_out=enc_out)
       loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
