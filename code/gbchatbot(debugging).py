@@ -148,7 +148,8 @@ class TransformerDecoder(tf.keras.Model):
         )
         return tf.tile(mask, mult)
 
-    def call(self, enc_out, target):
+    def call(self, inp):
+        enc_out, target = inp[0], inp[1]
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -171,7 +172,7 @@ class discriminator_supervised(tf.keras.Model):
   
   def call(self, enc_out, embeddings):
     X = self.shared_layers(enc_out)
-    X = self.decoder.call(X, embeddings)
+    X = self.decoder.call((X, embeddings))
     X = self.dense(X)
     return X
 
