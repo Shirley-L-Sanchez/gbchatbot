@@ -42,7 +42,7 @@ import torch
 
 #hyperparameters
 batch_size = 100
-seq_len = 277
+seq_len = 150
 hidden_dim = 768
 vocab_size = 30522
 z_dim = 100
@@ -89,6 +89,7 @@ def build_generator(z_dim):
 
 def build_discriminator_unsupervised(shared_layers):
   model = Sequential()
+  model.add(Reshape((seq_len, hidden_dim)))
   model.add(shared_layers)
   def custom_activation(x):
         
@@ -149,7 +150,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
     def call(self, enc_out, target):
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
-        seq_len = input_shape[1]
+        seq_len = input_shape[1] 
         causal_mask = self.causal_attention_mask(batch_size, seq_len, seq_len, tf.bool)
         target_att = self.self_att(target, target, attention_mask=causal_mask)
         target_norm = self.layernorm1(target + self.self_dropout(target_att))
@@ -179,13 +180,14 @@ class discriminator_supervised(tf.keras.layers.Layer):
     loss = tf.reduce_sum(loss)
     return loss
   
-  def train_on_batch(self, questions, enc_out, answers):
-    mask = tf.where(answers==0, 0, 1)
+  def train_on_batch(self, enc_out, answers, ids):
+    mask = tf.where(ids==0, 0, 1)
     with tf.GradientTape() as tape:
-      probs = self.call(enc_out, questions)
-      loss = self.loss(probs, answers, mask)
+      probs = self.call(enc_out, answers[:,:-1,:])
+      loss = self.loss(probs, answers[:,1:,:], mask)
     gradients = tape.gradient(loss, self.trainable_variables)
-    model.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+    self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+    return loss, 0
 
 """Let's create the models!"""
 
@@ -235,31 +237,37 @@ def train(questions, answers,batch_size,sample_interval, num_unlabeled):
       tokenizer_output['attention_mask'] = b
       return tokenizer_output
  
-    batch_questions_labeled = tokenizer_output_preprocessing(tokenizer(questions[i:i+batch_size-num_unlabeled], padding=True, truncation=True, return_tensors='pt', return_token_type_ids=False))  
-    batch_questions_unlabeled = tokenizer_output_preprocessing(tokenizer(questions[i+batch_size-num_unlabeled:i+batch_size], padding=True, truncation=True, return_tensors='pt', return_token_type_ids=False))
-    batch_answers = tokenizer_output_preprocessing(tokenizer(answers[i:i+batch_size-num_unlabeled], return_tensors="pt", padding=True, truncation=True, return_token_type_ids=False))
+    batch_questions_labeled = tokenizer(questions[i:i+batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+    batch_questions_unlabeled = tokenizer(questions[i+batch_size-num_unlabeled:i+batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+    batch_answers = tokenizer(answers[i:i+batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
 
     z = np.random.normal(0,1,(num_unlabeled,z_dim))
     fake_questions = generator.predict(z)
 
     BERT_output = model(**batch_questions_labeled).hidden_states
-    BERT_out = BERT_output[-1]
-    BERT_embeddings = BERT_output[0]
+    BERT_out = BERT_output[-1].detach().numpy()
+    
+    
+    BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
 
-    d_supervised_loss,accuracy = discriminator_supervised.train_on_batch(BERT_embeddings, BERT_out.detach().numpy(), batch_answers['input_ids'])
+    d_supervised_loss,accuracy = discriminator_supervised.train_on_batch(BERT_out, BERT_embeddings, batch_answers['input_ids'])
+    
+    BERT_output = model(**batch_questions_unlabeled).hidden_states
+    BERT_out = BERT_output[-1].detach().numpy()
+    
     #run batch_questions_unlabeled through BERT to get the output of BERT
-    d_unsupervised_loss_real = discriminator_unsupervised.train_on_batch(batch_questions_unlabeled,real)
-    d_unsupervised_loss_fake = discriminator_unsupervised.train_on_batch(fake_questions,fake)
+    d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_out,real[:num_unlabeled])
+    d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
     d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
 
     z = np.random.normal(0,1,(num_unlabeled,z_dim))
-    fake_imgs = generator.predict(z)
-    generator_loss = gan.train_on_batch(z,real)
+    fake_imgs = generator.predict(z) #??
+    generator_loss, _ = gan.train_on_batch(z,real[:num_unlabeled])
 
     
     if(i+1) % sample_interval ==0:
       supervised_losses.append(d_supervised_loss)
-      accuracies.append(100*accuracy)
+      #accuracies.append(100*accuracy)
       iteration_checkpoints.append(i+1)
       val_loss = discriminator_supervised.evaluate(x=X_test,y=y_test,verbose=0)
       val_losses.append(val_loss[0])
@@ -268,7 +276,7 @@ def train(questions, answers,batch_size,sample_interval, num_unlabeled):
       print('Generator Loss:',generator_loss,end=",")
       print('Discriminator Unsuperived Loss:',d_unsupervised_loss,sep=',')
       print('val_loss:',val_loss,sep=',')
-      print('Accuracy Supervised:',100*accuracy)
+      #print('Accuracy Supervised:',100*accuracy)
       #sample_images(generator)
 
 """Remember that num_unlabeled should be less than batch_size."""
