@@ -285,7 +285,7 @@ def train(questions, answers,batch_size,sample_interval, num_unlabeled):
 
 iterations = 6000
 batch_size = 100
-sample_interval = 100
+sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
 discriminator_supervised.save('./discriminator_supervised_model', save_format='h5')
