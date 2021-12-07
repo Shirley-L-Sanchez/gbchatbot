@@ -59,7 +59,7 @@ def pad_to_seq_len(questions):
     tokens.append('[PAD]')
   return ' '.join(x for x in tokens)
 
-data = pd.read_csv('/home/spswatron/gbchatbot/code/QApairs.csv')
+data = pd.read_csv('./QApairs.csv')
 questions, answers = list(data['questions']), list(data['answers'])
 #questions = [pad_to_seq_len(x) for x in questions]
 X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_size=0.20, random_state=42)
@@ -67,6 +67,7 @@ X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_siz
 """Let's take a look at the preprocessed data!"""
 
 print(X_train[:5])
+X_train, X_test, y_train, y_test = X_train[-1000:], X_test[-1000:], y_train[-1000:], y_test[-1000:]
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
@@ -177,7 +178,7 @@ class discriminator_supervised(tf.keras.layers.Layer):
   def loss(self, prbs, labels, mask):
     scce = tf.keras.losses.SparseCategoricalCrossentropy(reduction=tf.keras.losses.Reduction.NONE)
     loss = scce(labels, prbs, sample_weight=mask)
-    loss = tf.reduce_sum(loss)
+    loss = tf.reduce_mean(loss)
     return loss
   
   def train_on_batch(self, enc_out, answers, ids):
@@ -284,7 +285,7 @@ def train(questions, answers,batch_size,sample_interval, num_unlabeled):
 
 iterations = 6000
 batch_size = 100
-sample_interval = 1
+sample_interval = 100
 num_unlabeled = 30
 train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
 discriminator_supervised.save('./discriminator_supervised_model', save_format='h5')
