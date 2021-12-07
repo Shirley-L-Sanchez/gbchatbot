@@ -59,8 +59,8 @@ def pad_to_seq_len(questions):
     tokens.append('[PAD]')
   return ' '.join(x for x in tokens)
 
-data = pd.read_csv('./QAsentences.csv')
-questions, answers = list(data['questions'])[:200], list(data['answers'])[:200]
+data = pd.read_csv('/home/spswatron/gbchatbot/code/QApairs.csv')
+questions, answers = list(data['questions']), list(data['answers'])
 #questions = [pad_to_seq_len(x) for x in questions]
 X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_size=0.20, random_state=42)
 
@@ -222,62 +222,63 @@ def train(questions, answers,batch_size,sample_interval, num_unlabeled):
   fake = np.zeros((batch_size,1))
 
   for i in range(0, len(questions), batch_size):
-    def tokenizer_output_preprocessing(tokenizer_output):
-      #modify input_ids
-      a = tokenizer_output['input_ids']
-      b = torch.zeros([len(a), seq_len], dtype=torch.int32)
-      for i in range(len(b)): 
-        b[i] = torch.cat((a[i], torch.zeros([seq_len - len(a[i])], dtype=torch.int32)), 0)
-      tokenizer_output['input_ids'] = b
-      #attention mask
-      a = tokenizer_output['attention_mask']
-      b = torch.zeros([len(a), seq_len], dtype=torch.int32)
-      for i in range(len(b)): 
-        b[i] = torch.cat((a[i], torch.zeros([seq_len - len(a[i])], dtype=torch.int32)), 0)
-      tokenizer_output['attention_mask'] = b
-      return tokenizer_output
- 
-    batch_questions_labeled = tokenizer(questions[i:i+batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
-    batch_questions_unlabeled = tokenizer(questions[i+batch_size-num_unlabeled:i+batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
-    batch_answers = tokenizer(answers[i:i+batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+    if (i + batch_size) < len(questions):
+      def tokenizer_output_preprocessing(tokenizer_output):
+        #modify input_ids
+        a = tokenizer_output['input_ids']
+        b = torch.zeros([len(a), seq_len], dtype=torch.int32)
+        for i in range(len(b)): 
+          b[i] = torch.cat((a[i], torch.zeros([seq_len - len(a[i])], dtype=torch.int32)), 0)
+        tokenizer_output['input_ids'] = b
+        #attention mask
+        a = tokenizer_output['attention_mask']
+        b = torch.zeros([len(a), seq_len], dtype=torch.int32)
+        for i in range(len(b)): 
+          b[i] = torch.cat((a[i], torch.zeros([seq_len - len(a[i])], dtype=torch.int32)), 0)
+        tokenizer_output['attention_mask'] = b
+        return tokenizer_output
+  
+      batch_questions_labeled = tokenizer(questions[i:i+batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+      batch_questions_unlabeled = tokenizer(questions[i+batch_size-num_unlabeled:i+batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+      batch_answers = tokenizer(answers[i:i+batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
 
-    z = np.random.normal(0,1,(num_unlabeled,z_dim))
-    fake_questions = generator.predict(z)
+      z = np.random.normal(0,1,(num_unlabeled,z_dim))
+      fake_questions = generator.predict(z)
 
-    BERT_output = model(**batch_questions_labeled).hidden_states
-    BERT_out = BERT_output[-1].detach().numpy()
-    
-    
-    BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
+      BERT_output = model(**batch_questions_labeled).hidden_states
+      BERT_out = BERT_output[-1].detach().numpy()
+      
+      
+      BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
 
-    d_supervised_loss,accuracy = discriminator_supervised.train_on_batch(BERT_out, BERT_embeddings, batch_answers['input_ids'])
-    
-    BERT_output = model(**batch_questions_unlabeled).hidden_states
-    BERT_out = BERT_output[-1].detach().numpy()
-    
-    #run batch_questions_unlabeled through BERT to get the output of BERT
-    d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_out,real[:num_unlabeled])
-    d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
-    d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
+      d_supervised_loss,accuracy = discriminator_supervised.train_on_batch(BERT_out, BERT_embeddings, batch_answers['input_ids'])
+      
+      BERT_output = model(**batch_questions_unlabeled).hidden_states
+      BERT_out = BERT_output[-1].detach().numpy()
+      
+      #run batch_questions_unlabeled through BERT to get the output of BERT
+      d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_out,real[:num_unlabeled])
+      d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
+      d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
 
-    z = np.random.normal(0,1,(num_unlabeled,z_dim))
-    fake_imgs = generator.predict(z) #??
-    generator_loss, _ = gan.train_on_batch(z,real[:num_unlabeled])
+      z = np.random.normal(0,1,(num_unlabeled,z_dim))
+      fake_imgs = generator.predict(z) #??
+      generator_loss, _ = gan.train_on_batch(z,real[:num_unlabeled])
 
-    
-    if(i+1) % sample_interval ==0:
-      supervised_losses.append(d_supervised_loss)
-      #accuracies.append(100*accuracy)
-      iteration_checkpoints.append(i+1)
-      val_loss = discriminator_supervised.evaluate(x=X_test,y=y_test,verbose=0)
-      val_losses.append(val_loss[0])
-      print("Iteration No.:",i+1,end=",")
-      print("Discriminator Supervised Loss:",d_supervised_loss,end=',')
-      print('Generator Loss:',generator_loss,end=",")
-      print('Discriminator Unsuperived Loss:',d_unsupervised_loss,sep=',')
-      print('val_loss:',val_loss,sep=',')
-      #print('Accuracy Supervised:',100*accuracy)
-      #sample_images(generator)
+      
+      if(i+1) % sample_interval ==0:
+        supervised_losses.append(d_supervised_loss)
+        #accuracies.append(100*accuracy)
+        iteration_checkpoints.append(i+1)
+        val_loss = discriminator_supervised.evaluate(x=X_test,y=y_test,verbose=0)
+        val_losses.append(val_loss[0])
+        print("Iteration No.:",i+1,end=",")
+        print("Discriminator Supervised Loss:",d_supervised_loss,end=',')
+        print('Generator Loss:',generator_loss,end=",")
+        print('Discriminator Unsuperived Loss:',d_unsupervised_loss,sep=',')
+        print('val_loss:',val_loss,sep=',')
+        #print('Accuracy Supervised:',100*accuracy)
+        #sample_images(generator)
 
 """Remember that num_unlabeled should be less than batch_size."""
 
@@ -286,3 +287,5 @@ batch_size = 100
 sample_interval = 100
 num_unlabeled = 30
 train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
+discriminator_supervised.save('./discriminator_supervised_model', save_format='h5')
+gan.save('./gan', save_format='h5')
