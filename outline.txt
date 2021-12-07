@@ -1,0 +1,45 @@
+TRAINING
+
+have a train/test split -- testing set is 20% of the data
+
+1) TOKENIZATION -- adding padding and making attention masks
+ - labeled questions = tokenized questions
+    - input ids AND attention mask
+ - unlabeled questions = tokenized questions
+    - input ids AND attention mask
+ - answers (labels for the labeled questions) = tokenized answers
+    - input ids AND attention mask
+2) generator is generating fake questions from random vectors
+3) BERT model takes in the labeled questions and outputs encoded
+questions
+4) BERT model takes in the answers and outputs the embeddings for
+those answers
+5) get the supervised discriminator loss and accuracy
+    - this includes the decoder --> comparing the decoded answers to
+    the real answers ?
+6) train the unsupervised discriminator to get the loss for real data
+7) train the unsupervised discriminator to get the loss for fake data
+8) calculate total loss for the unsupervised discriminator
+9) calculate the generator loss
+
+
+MODELS:
+ - BERT = pre-trained
+ - generator:
+    - 3 dense layers
+    - output = seq_len * hidden_dim
+ - shared layers:
+    - 3 dense layers
+    - output = hidden dimension
+ - TransformerDecoder (decoder):
+    - normalization layers
+    - multi-headed attention
+    - dropout layers
+ - supervised discriminator:
+    - shared layers, decoder, dense layer
+    - outputs probabilities
+ - unsupervised discriminator:
+    - shared layers
+    - custom activation function
+ - GAN:
+    - generator, reshape, discriminator
