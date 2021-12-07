@@ -67,7 +67,7 @@ X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_siz
 """Let's take a look at the preprocessed data!"""
 
 print(X_train[:5])
-X_train, X_test, y_train, y_test = X_train[-700:], X_test[-700:], y_train[-700:], y_test[-700:]
+X_train, X_test, y_train, y_test = X_train[-200:], X_test[-200:], y_train[-200:], y_test[-200:]
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
@@ -207,8 +207,8 @@ discriminator_supervised = discriminator_supervised(shared_layers)
 """Let's set up the pre-trained BERT model!"""
 
 from transformers import BertTokenizer, BertModel
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
+model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
 
 """Let's train the GBchatbot!"""
 
@@ -288,5 +288,6 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
-discriminator_supervised.save('./discriminator_supervised_model', save_format='tf')
+model.build(input_shape=(seq_len, hidden_dim))
+discriminator_supervised.save('./discriminator_supervised_model', save_format='h5')
 gan.save('./gan', save_format='tf')
