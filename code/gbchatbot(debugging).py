@@ -42,7 +42,7 @@ import torch
 
 #hyperparameters
 batch_size = 100
-seq_len = 150
+seq_len = 70
 hidden_dim = 768
 vocab_size = 30522
 z_dim = 100
@@ -184,7 +184,7 @@ class discriminator_supervised(tf.keras.layers.Layer):
     mask = tf.where(ids==0, 0, 1)
     with tf.GradientTape() as tape:
       probs = self.call(enc_out, answers[:,:-1,:])
-      loss = self.loss(probs, answers[:,1:,:], mask)
+      loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
     return loss, 0
