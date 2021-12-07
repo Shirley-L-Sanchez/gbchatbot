@@ -187,7 +187,7 @@ class discriminator_supervised(tf.keras.Model):
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
     with tf.GradientTape() as tape:
-      probs = self(answers[:,:-1,:], enc_out=enc_out)
+      probs = self(answers[:,:-1,:], enc_out)
       loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
