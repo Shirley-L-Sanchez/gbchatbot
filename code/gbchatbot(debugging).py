@@ -114,7 +114,7 @@ num_heads = 12
 embed_dim = hidden_dim
 feed_forward_dim = 256
 
-class TransformerDecoder(tf.keras.layers.Layer):
+class TransformerDecoder(tf.keras.Model):
     def __init__(self, embed_dim, num_heads, feed_forward_dim, dropout_rate=0.1):
         super(TransformerDecoder, self).__init__()
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -288,7 +288,6 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
-discriminator_supervised.build(input_shape=(seq_len, hidden_dim))
 discriminator_supervised.save('./discriminator_supervised_model', save_format='h5')
 gan.build(input_shape=(num_unlabeled, z_dim))
 gan.save('./gan', save_format='tf')
