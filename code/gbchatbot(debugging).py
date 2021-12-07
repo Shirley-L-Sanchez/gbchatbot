@@ -67,7 +67,7 @@ X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_siz
 """Let's take a look at the preprocessed data!"""
 
 print(X_train[:5])
-X_train, X_test, y_train, y_test = X_train[-1000:], X_test[-1000:], y_train[-1000:], y_test[-1000:]
+X_train, X_test, y_train, y_test = X_train[-700:], X_test[-700:], y_train[-700:], y_test[-700:]
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
@@ -161,7 +161,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         ffn_out_norm = self.layernorm3(enc_out_norm + self.ffn_dropout(ffn_out))
         return ffn_out_norm
 
-class discriminator_supervised(tf.keras.layers.Layer):
+class discriminator_supervised(tf.keras.Model):
   def __init__(self, shared_layers):
     super(discriminator_supervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
