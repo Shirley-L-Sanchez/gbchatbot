@@ -267,16 +267,16 @@ def train(questions, answers,batch_size,sample_interval, num_unlabeled):
 
       
       if(i+1) % sample_interval ==0:
-        supervised_losses.append(d_supervised_loss)
+        #supervised_losses.append(d_supervised_loss)
         #accuracies.append(100*accuracy)
-        iteration_checkpoints.append(i+1)
-        val_loss = discriminator_supervised.evaluate(x=X_test,y=y_test,verbose=0)
-        val_losses.append(val_loss[0])
+        #iteration_checkpoints.append(i+1)
+        #val_loss = discriminator_supervised.evaluate(x=X_test,y=y_test,verbose=0)
+        #val_losses.append(val_loss[0])
         print("Iteration No.:",i+1,end=",")
         print("Discriminator Supervised Loss:",d_supervised_loss,end=',')
         print('Generator Loss:',generator_loss,end=",")
-        print('Discriminator Unsuperived Loss:',d_unsupervised_loss,sep=',')
-        print('val_loss:',val_loss,sep=',')
+        print('Discriminator Unsupervised Loss:',d_unsupervised_loss,sep=',')
+        #print('val_loss:',val_loss,sep=',')
         #print('Accuracy Supervised:',100*accuracy)
         #sample_images(generator)
 
