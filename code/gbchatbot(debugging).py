@@ -148,8 +148,7 @@ class TransformerDecoder(tf.keras.Model):
         )
         return tf.tile(mask, mult)
 
-    def call(self, inp):
-        enc_out, target = inp[0], inp[1]
+    def call(self, enc_out, target):
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -172,7 +171,7 @@ class discriminator_supervised(tf.keras.Model):
   
   def call(self, enc_out, embeddings):
     X = self.shared_layers(enc_out)
-    X = self.decoder.call((X, embeddings))
+    X = self.decoder.call(X, embeddings)
     X = self.dense(X)
     return X
 
@@ -289,7 +288,19 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
-discriminator_supervised.decoder.build(input_shape=(seq_len, hidden_dim))
-discriminator_supervised.decoder.save('./discriminator_supervised_model', save_format='tf')
-gan.build(input_shape=(num_unlabeled, z_dim))
-gan.save('./gan', save_format='tf')
+#discriminator_supervised.build(input_shape=(seq_len, hidden_dim))
+#discriminator_supervised.save('./discriminator_supervised_model', save_format='tf')
+#gan.build(input_shape=(num_unlabeled, z_dim))
+#gan.save('./gan', save_format='tf')
+
+def build_seq_to_seq():
+  model = Sequential()
+  model.add(shared_layers)
+  model.add(discriminator_supervised)
+  model.add(Activation('softmax'))
+  return model
+
+seq_to_seq_model =  build_seq_to_seq().compile(loss='sparse_categorical_crossentropy',
+                         metrics=['accuracy'],
+                         optimizer=Adam())
+seq_to_seq_model.save('./seq_to_seq', save_format='tf')
