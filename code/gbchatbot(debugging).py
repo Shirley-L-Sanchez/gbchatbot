@@ -276,7 +276,7 @@ def generate_answer(discrim, query, target_start_token_id, BERT, tokenizer):
     enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()
     bs = tf.shape(enc_out)[0]
     target_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
-    target_embed = model(**dec_in_tokens).hidden_states[0].detach().numpy()
+    target_embed = model(**target_tokens).hidden_states[0].detach().numpy()
     out_tokens = []
     for i in range(seq_len - 1):
         probs = discrim.call([enc_out, target_embed])
@@ -284,7 +284,7 @@ def generate_answer(discrim, query, target_start_token_id, BERT, tokenizer):
         last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
         out_tokens.append(last_tokens)
         last_embed = model(**last_tokens).hidden_states[0].detach().numpy()
-        target_embedd = tf.concat([dec_in, last_embed], axis=1)
+        target_embed = tf.concat([target_embed, last_embed], axis=1)
     return out_tokens
 
 
@@ -317,9 +317,11 @@ gan.save('./gan_saved_model', save_format='tf')
 model = tf.keras.models.load_model('./discriminator_supervised_saved_model')
 print("Model 1 loaded")
 model.summary()
-generate_answer(model, )
 
 model2 = tf.keras.models.load_model('./gan_saved_model')
 print("Model 2 loaded")
 model2.summary()
+
+a = generate_answer(model, [X_test[0]], 101, model, tokenizer)
+print(a)
 
