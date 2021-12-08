@@ -167,7 +167,7 @@ class discriminator_supervised(tf.keras.Model):
   def __init__(self, shared_layers):
     super(discriminator_supervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
-    self.inputs = Input(shape=(None, 768))
+    self.inputs = Input(shape=(768))
     self.shared_layers = shared_layers
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
@@ -227,7 +227,6 @@ gan = build_gan(generator,discriminator_unsupervised)
 gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
 #seq2seq
 discriminator_supervised = discriminator_supervised(shared_layers)
-discriminator_supervised.build([hidden_dim])
 
 from transformers import BertTokenizer, BertModel
 tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
