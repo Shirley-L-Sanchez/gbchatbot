@@ -322,6 +322,7 @@ model2 = tf.keras.models.load_model('./gan_saved_model')
 print("Model 2 loaded")
 model2.summary()
 
+print(X_test[0])
 a = generate_answer(model, [X_test[0]], 101, model, tokenizer)
 print(a)
 
