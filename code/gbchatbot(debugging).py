@@ -279,7 +279,6 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train)
-discriminator_supervised.build(input_shape=(batch_size-num_unlabeled, seq_len, hidden_dim))
 discriminator_supervised.save('./discriminator_supervised_saved_model', save_format='tf')
 gan.build(input_shape=(num_unlabeled, z_dim))
 gan.save('./gan_saved_model', save_format='tf')
