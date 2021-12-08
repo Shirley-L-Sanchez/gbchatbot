@@ -10,7 +10,6 @@ Original file is located at
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-import tensorflow
 from tensorflow.keras import layers
 from transformers import BertTokenizer, BertModel
 
@@ -43,7 +42,6 @@ import torch
 
 #hyperparameters
 batch_size = 100
-num_unlabeled = 30
 seq_len = 70
 hidden_dim = 768
 vocab_size = 30522
@@ -61,22 +59,15 @@ def pad_to_seq_len(questions):
     tokens.append('[PAD]')
   return ' '.join(x for x in tokens)
 
-data = pd.read_csv('./QAsentences.csv')
+data = pd.read_csv('./QApairs.csv')
 questions, answers = list(data['questions']), list(data['answers'])
 #questions = [pad_to_seq_len(x) for x in questions]
-#only train on 100 questions
-X_train, X_test, y_train, y_test = train_test_split(questions[-125:], answers[-125:], test_size=0.20, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_size=0.20, random_state=42)
 
 """Let's take a look at the preprocessed data!"""
 
 print(X_train[:5])
-
-"""Let's set up the pre-trained BERT model!"""
-
-from transformers import BertTokenizer, BertModel
-tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
-model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
-
+X_train, X_test, y_train, y_test = X_train[-200:], X_test[-200:], y_train[-200:], y_test[-200:]
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
@@ -123,7 +114,7 @@ num_heads = 12
 embed_dim = hidden_dim
 feed_forward_dim = 256
 
-class TransformerDecoder(tf.keras.Model):
+class TransformerDecoder(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads, feed_forward_dim, dropout_rate=0.1):
         super(TransformerDecoder, self).__init__()
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -140,8 +131,6 @@ class TransformerDecoder(tf.keras.Model):
                 layers.Dense(embed_dim),
             ]
         )
-        answers = tokenizer(y_train[0:batch_size - num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
-        self.answers_embeddings = model(**answers).hidden_states[0].detach().numpy()
 
     def causal_attention_mask(self, batch_size, n_dest, n_src, dtype):
         """Masks the upper half of the dot product matrix in self attention.
@@ -159,8 +148,9 @@ class TransformerDecoder(tf.keras.Model):
         )
         return tf.tile(mask, mult)
 
-    def call(self, enc_out):
-        target = self.answers_embeddings
+    def call(self, input):
+        target = input[:,70:,:]
+        enc_out = input[:,:70,:]
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -181,11 +171,14 @@ class discriminator_supervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
   
-  def call(self, enc_out):
+  def call(self, input):
+    target = input[:,70:,:]
+    enc_out = input[:,:70,:]
     X = self.shared_layers(enc_out)
-    X = self.decoder(X)
-    X = self.dense(X)
-    return X
+    dec_in = tf.concat([X, target], 1)
+    dec_out = self.decoder.call(dec_in)
+    dense_out = self.dense(dec_out)
+    return dense_out
 
   def loss(self, prbs, labels, mask):
     scce = tf.keras.losses.SparseCategoricalCrossentropy(reduction=tf.keras.losses.Reduction.NONE)
@@ -193,14 +186,32 @@ class discriminator_supervised(tf.keras.Model):
     loss = tf.reduce_mean(loss)
     return loss
   
-  def train_on_batch(self, enc_out, ids):
+  def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
+    model_in = tf.concat([enc_out, answers[:,:-1,:]], 1)
     with tf.GradientTape() as tape:
-      probs = self(enc_out)
-      loss = self.loss(probs[:,1:], ids[:,1:], mask[:,1:])
+      probs = self.call(model_in)
+      loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
     return loss, 0
+   
+  def generate_answer(self, query, target_start_token_id, BERT, tokenizer):
+    query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+    enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()       
+    bs = tf.shape(enc_out)[0]
+    dec_in_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
+    dec_in_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
+    out_tokens = []
+    for i in range(seq_len - 1):
+      input = tf.concatenate([enc_out, dec_in_embed], 1)
+      probs = self.call(input)
+      tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
+      last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
+      out_tokens.append(last_tokens)
+      last_embed =  model(**last_tokens).hidden_states[0].detach().numpy()
+      dec_in = tf.concat([dec_in, last_embed], axis=1)
+    return out_tokens
 
 """Let's create the models!"""
 
@@ -230,15 +241,17 @@ def train(questions, answers,batch_size = 100, num_unlabeled = 30):
 
   batch_questions_labeled = tokenizer(questions[0:batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
   batch_questions_unlabeled = tokenizer(questions[batch_size-num_unlabeled:batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+  batch_answers = tokenizer(answers[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
 
   z = np.random.normal(0,1,(num_unlabeled,z_dim))
   fake_questions = generator.predict(z)
 
-  BERT_output = model(**batch_questions_labeled).hidden_states
-  BERT_out = BERT_output[-1].detach().numpy()
+  BERT_output = model(**batch_questions_labeled).hidden_states[-1].detach().numpy()
+  BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
+
   
   answers = tokenizer(y_train[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
-  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_out, answers['input_ids'])
+  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_out, BERT_embeddings, answers['input_ids'])
   
   BERT_output = model(**batch_questions_unlabeled).hidden_states
   BERT_out = BERT_output[-1].detach().numpy()
