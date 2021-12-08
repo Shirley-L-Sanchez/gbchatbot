@@ -153,9 +153,9 @@ class TransformerDecoder(tf.keras.layers.Layer):
         ffn_out_norm = self.layernorm3(enc_out_norm + self.ffn_dropout(ffn_out))
         return ffn_out_norm
 
-class discriminator_supervised(tf.keras.Model):
+class DiscriminatorSupervised(tf.keras.Model):
   def __init__(self, shared_layers):
-    super(discriminator_supervised, self).__init__()
+    super(DiscriminatorSupervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
     self.shared_layers = shared_layers
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
@@ -198,15 +198,15 @@ class discriminator_supervised(tf.keras.Model):
     query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
     enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()       
     bs = tf.shape(enc_out)[0]
-    target_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
-    target_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
+    target_tokens = {'input_ids': torch.from_numpy(np.ones((bs, 1), dtype=tf.int32) * target_start_token_id)}
+    target_embed =  BERT(**target_tokens).hidden_states[0].detach().numpy()
     out_tokens = []
     for i in range(seq_len - 1):
       probs = self.pred(enc_out, target_embed)
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
       last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
       out_tokens.append(last_tokens)
-      last_embed =  model(**last_tokens).hidden_states[0].detach().numpy()
+      last_embed =  BERT(**last_tokens).hidden_states[0].detach().numpy()
       target_embed = tf.concat([dec_in, last_embed], axis=1)
     return out_tokens
 
@@ -220,11 +220,11 @@ discriminator_unsupervised.compile(optimizer = Adam(learning_rate=0.001),loss='b
 generator = build_generator(z_dim)
 discriminator_unsupervised.trainable = False
 gan = build_gan(generator,discriminator_unsupervised)
-gan.build((num_unlabeled, z_dim))
+# gan.build((num_unlabeled, z_dim))
 gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
 #seq2seq
-discriminator_supervised = discriminator_supervised(shared_layers)
-discriminator_supervised.build((batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
+discriminator_supervised = DiscriminatorSupervised(shared_layers)
+# discriminator_supervised.build((batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
 
 from transformers import BertTokenizer, BertModel
 tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
@@ -274,16 +274,15 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train)
-discriminator_supervised.save_weights('./discriminator_supervised_saved_weights', save_format='tf')
+discriminator_supervised.save_weights('./discriminator_supervised_saved_weights')
 # gan.save_weights('./gan_saved_weights', save_format='tf')
 
 sl = build_shared_layers(sentence_shape)
-ds = discriminator_supervised(sl)
+ds = DiscriminatorSupervised(sl)
 status = ds.load_weights('./discriminator_supervised_saved_weights')
+ds.build((batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
 print("Model 1 loaded")
-model.summary()
+ds.summary()
 
-# model2 = tf.keras.models.load_model('./gan_saved_weights')
-# print("Model 2 loaded")
-# model2.summary()
+ds.generate_answer([X_test[0]], 101, model, tokenizer)
 
