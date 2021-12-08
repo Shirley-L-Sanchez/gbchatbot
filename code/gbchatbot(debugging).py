@@ -72,8 +72,8 @@ X_train, X_test, y_train, y_test = X_train[-200:], X_test[-200:], y_train[-200:]
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
-def build_shared_layers(hidden_dim):
-  inp = Input(shape=(hidden_dim))
+def build_shared_layers(sentence_shape):
+  inp = Input(shape=(sentence_shape))
   X = Dense(hidden_dim, activation='relu')(inp)
   X = Dense(hidden_dim, activation='relu')(X)
   X = Dense(hidden_dim)(X)
@@ -214,7 +214,7 @@ class discriminator_supervised(tf.keras.Model):
 """Let's create the models!"""
 
 #shared base
-shared_layers = build_shared_layers(hidden_dim)
+shared_layers = build_shared_layers(sentence_shape)
 #GAN 
 discriminator_unsupervised = build_discriminator_unsupervised(shared_layers)
 discriminator_unsupervised.compile(optimizer = Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
