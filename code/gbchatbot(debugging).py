@@ -164,7 +164,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         return ffn_out_norm
 
 class discriminator_supervised(tf.keras.Model):
-  def __init__(self, shared_layers):
+  def __init__(self, shared_layers, inputs=Input(shape=(seq_len, hidden_dim))):
     super(discriminator_supervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
     self.shared_layers = shared_layers
