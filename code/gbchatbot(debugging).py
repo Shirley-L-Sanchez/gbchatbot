@@ -206,22 +206,6 @@ class discriminator_supervised(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return loss, 0
 
-    @tf.function
-    def generate_answer(self, query, target_start_token_id, BERT, tokenizer):
-        query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
-        enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()
-        bs = tf.shape(enc_out)[0]
-        target_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
-        target_embed = model(**dec_in_tokens).hidden_states[0].detach().numpy()
-        out_tokens = []
-        for i in range(seq_len - 1):
-            probs = self.call([enc_out, target_embed])
-            tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
-            last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
-            out_tokens.append(last_tokens)
-            last_embed = model(**last_tokens).hidden_states[0].detach().numpy()
-            target_embedd = tf.concat([dec_in, last_embed], axis=1)
-        return out_tokens
 
 """Let's create the models!"""
 
@@ -287,6 +271,23 @@ def train(questions, answers, batch_size=100):
     print('Discriminator Unsupervised Loss:', d_unsupervised_loss, sep=',')
 
 
+def generate_answer(discrim, query, target_start_token_id, BERT, tokenizer):
+    query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+    enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()
+    bs = tf.shape(enc_out)[0]
+    target_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
+    target_embed = model(**dec_in_tokens).hidden_states[0].detach().numpy()
+    out_tokens = []
+    for i in range(seq_len - 1):
+        probs = discrim.call([enc_out, target_embed])
+        tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
+        last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
+        out_tokens.append(last_tokens)
+        last_embed = model(**last_tokens).hidden_states[0].detach().numpy()
+        target_embedd = tf.concat([dec_in, last_embed], axis=1)
+    return out_tokens
+
+
 """Remember that num_unlabeled should be less than batch_size."""
 
 iterations = 6000
@@ -316,7 +317,7 @@ gan.save('./gan_saved_model', save_format='tf')
 model = tf.keras.models.load_model('./discriminator_supervised_saved_model')
 print("Model 1 loaded")
 model.summary()
-model.generate_answer()
+generate_answer(model, )
 
 model2 = tf.keras.models.load_model('./gan_saved_model')
 print("Model 2 loaded")
