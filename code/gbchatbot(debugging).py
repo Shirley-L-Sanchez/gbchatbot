@@ -274,14 +274,16 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train)
-discriminator_supervised.save('./discriminator_supervised_saved_model', save_format='tf')
-gan.save('./gan_saved_model', save_format='tf')
+discriminator_supervised.save_weights('./discriminator_supervised_saved_weights', save_format='tf')
+# gan.save_weights('./gan_saved_weights', save_format='tf')
 
-model = tf.keras.models.load_model('./discriminator_supervised_saved_model')
+sl = build_shared_layers(sentence_shape)
+ds = discriminator_supervised(sl)
+status = ds.load_weights('./discriminator_supervised_saved_weights')
 print("Model 1 loaded")
 model.summary()
 
-model2 = tf.keras.models.load_model('./gan_saved_model')
-print("Model 2 loaded")
-model2.summary()
+# model2 = tf.keras.models.load_model('./gan_saved_weights')
+# print("Model 2 loaded")
+# model2.summary()
 
