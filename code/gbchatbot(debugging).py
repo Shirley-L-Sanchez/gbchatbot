@@ -152,6 +152,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
 
     def call(self, enc_out, target):
         input_shape = tf.shape(target)
+        print("input shape=" + str(input_shape))
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
         causal_mask = self.causal_attention_mask(batch_size, seq_len, seq_len, tf.bool)
@@ -171,7 +172,7 @@ class discriminator_supervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
     
-  @tf.function(input_signature=[tf.TensorSpec((batch_size, seq_len, hidden_dim), tf.float32)])
+  @tf.function(input_signature=[tf.TensorSpec((None, seq_len, hidden_dim), tf.float32)])
   def call(self, enc_out, target=tf.constant(0, shape=())):
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
@@ -250,6 +251,8 @@ def train(questions, answers,batch_size = 100):
 
   BERT_output = model(**batch_questions_labeled).hidden_states[-1].detach().numpy()
   BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
+  print(BERT_output)
+  print(BERT_embeddings)
   d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_output, BERT_embeddings, batch_answers['input_ids'])
   
   BERT_output = model(**batch_questions_unlabeled).hidden_states[-1].detach().numpy()
