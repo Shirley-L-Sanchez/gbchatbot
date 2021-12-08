@@ -172,9 +172,15 @@ class discriminator_supervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
     
+<<<<<<< HEAD
   @tf.function
   def call(self, input):
     enc_out, target = input[0], input[1]
+=======
+  def call(self, input):
+    enc_out = input[:, :70, :]
+    target = input[:, 70:, :]
+>>>>>>> f2ea7c7f53f820e3538829813bcb63fa8a1c02e2
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
     dense_out = self.dense(dec_out)
@@ -190,8 +196,13 @@ class discriminator_supervised(tf.keras.Model):
   @tf.function
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
+    input = tf.concat([enc_out, answers[:,:-1,:]], 1)
     with tf.GradientTape() as tape:
+<<<<<<< HEAD
       probs = self.call([enc_out, answers[:,:-1,:]])
+=======
+      probs = self.call(input)
+>>>>>>> f2ea7c7f53f820e3538829813bcb63fa8a1c02e2
       loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -206,7 +217,12 @@ class discriminator_supervised(tf.keras.Model):
     target_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
     out_tokens = []
     for i in range(seq_len - 1):
+<<<<<<< HEAD
       probs = self.call([enc_out, target_embed])
+=======
+      input = tf.concat([enc_out, target_embed], 1)
+      probs = self.call(input)
+>>>>>>> f2ea7c7f53f820e3538829813bcb63fa8a1c02e2
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
       last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
       out_tokens.append(last_tokens)
@@ -224,9 +240,11 @@ discriminator_unsupervised.compile(optimizer = Adam(learning_rate=0.001),loss='b
 generator = build_generator(z_dim)
 discriminator_unsupervised.trainable = False
 gan = build_gan(generator,discriminator_unsupervised)
+gan.build(input_shape=(num_unlabeled, z_dim))
 gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
 #seq2seq
 discriminator_supervised = discriminator_supervised(shared_layers)
+discriminator_supervised.build(input_shape=(batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
 
 from transformers import BertTokenizer, BertModel
 tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
