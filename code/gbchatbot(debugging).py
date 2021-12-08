@@ -72,8 +72,8 @@ X_train, X_test, y_train, y_test = X_train[-200:], X_test[-200:], y_train[-200:]
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
-def build_shared_layers(sentence_shape):
-  inp = Input(shape=sentence_shape)
+def build_shared_layers(hidden_dim):
+  inp = Input(shape=(hidden_dim,))
   X = Dense(hidden_dim, activation='relu')(inp)
   X = Dense(hidden_dim, activation='relu')(X)
   X = Dense(hidden_dim)(X)
@@ -171,7 +171,7 @@ class discriminator_supervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
     
-  @tf.function(input_signature=[tf.TensorSpec((None,)+(seq_len, hidden_dim), tf.float32)])
+  @tf.function(input_signature=[tf.TensorSpec((seq_len, hidden_dim), tf.float32)])
   def call(self, enc_out, target=None):
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
