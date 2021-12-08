@@ -47,6 +47,7 @@ hidden_dim = 768
 vocab_size = 30522
 z_dim = 100
 sentence_shape = (seq_len, hidden_dim)
+num_unlabeled = 30
 
 
 """Let's start by extracting and preprocessing the data."""
@@ -106,6 +107,7 @@ def build_gan(generator,discriminator):
   model.add(generator)
   model.add(Reshape((sentence_shape)))
   model.add(discriminator)
+  model.build(input_shape=(num_unlabeled, z_dim))
   return model
 
 """Let's build the seq2seq model. """
@@ -148,9 +150,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         )
         return tf.tile(mask, mult)
 
-    def call(self, input):
-        target = input[:,70:,:]
-        enc_out = input[:,:70,:]
+    def call(self, enc_out, target):
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -170,13 +170,11 @@ class discriminator_supervised(tf.keras.Model):
     self.shared_layers = shared_layers
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
+    self.build(input_shape=(70, 768))
   
-  def call(self, input):
-    target = input[:,70:,:]
-    enc_out = input[:,:70,:]
+  def call(self, enc_out, target=None):
     X = self.shared_layers(enc_out)
-    dec_in = tf.concat([X, target], 1)
-    dec_out = self.decoder.call(dec_in)
+    dec_out = self.decoder.call(X, target)
     dense_out = self.dense(dec_out)
     return dense_out
 
@@ -188,9 +186,8 @@ class discriminator_supervised(tf.keras.Model):
   
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
-    model_in = tf.concat([enc_out, answers[:,:-1,:]], 1)
     with tf.GradientTape() as tape:
-      probs = self.call(model_in)
+      probs = self.call(enc_out, target=answers[:,:-1,:])
       loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -200,17 +197,16 @@ class discriminator_supervised(tf.keras.Model):
     query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
     enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()       
     bs = tf.shape(enc_out)[0]
-    dec_in_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
-    dec_in_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
+    target_tokens = tf.ones((bs, 1), dtype=tf.int32) * target_start_token_id
+    target_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
     out_tokens = []
     for i in range(seq_len - 1):
-      input = tf.concatenate([enc_out, dec_in_embed], 1)
-      probs = self.call(input)
+      probs = self.call(enc_out, target_embed)
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
       last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
       out_tokens.append(last_tokens)
       last_embed =  model(**last_tokens).hidden_states[0].detach().numpy()
-      dec_in = tf.concat([dec_in, last_embed], axis=1)
+      target_embedd = tf.concat([dec_in, last_embed], axis=1)
     return out_tokens
 
 """Let's create the models!"""
@@ -223,11 +219,9 @@ discriminator_unsupervised.compile(optimizer = Adam(learning_rate=0.001),loss='b
 generator = build_generator(z_dim)
 discriminator_unsupervised.trainable = False
 gan = build_gan(generator,discriminator_unsupervised)
-gan.build(input_shape=(z_dim,))
 gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
 #seq2seq
 discriminator_supervised = discriminator_supervised(shared_layers)
-discriminator_supervised = discriminator_supervised.build(input_shape=(768,))
 
 from transformers import BertTokenizer, BertModel
 tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
@@ -240,7 +234,7 @@ iteration_checkpoints = []
 accuracies = []
 val_losses = []
 
-def train(questions, answers,batch_size = 100, num_unlabeled = 30):
+def train(questions, answers,batch_size = 100):
 
   real = np.ones((batch_size,1))
   fake = np.zeros((batch_size,1))
