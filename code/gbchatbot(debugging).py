@@ -223,11 +223,11 @@ discriminator_unsupervised.compile(optimizer = Adam(learning_rate=0.001),loss='b
 generator = build_generator(z_dim)
 discriminator_unsupervised.trainable = False
 gan = build_gan(generator,discriminator_unsupervised)
-gan.build(input_shape=(z_dim))
+gan.build(input_shape=(z_dim,))
 gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
 #seq2seq
 discriminator_supervised = discriminator_supervised(shared_layers)
-discriminator_supervised = discriminator_supervised.build(input_shape=(768))
+discriminator_supervised = discriminator_supervised.build(input_shape=(768,))
 
 from transformers import BertTokenizer, BertModel
 tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
