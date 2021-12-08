@@ -172,8 +172,9 @@ class discriminator_supervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
     
-  @tf.function(input_signature=[tf.TensorSpec((None, seq_len, hidden_dim), tf.float32), tf.TensorSpec((None, seq_len-1, hidden_dim), tf.float32)])
-  def call(self, enc_out, target):
+  def call(self, input):
+    enc_out = input[:, :70, :]
+    target = input[:, 70:, :]
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
     dense_out = self.dense(dec_out)
@@ -189,8 +190,9 @@ class discriminator_supervised(tf.keras.Model):
   @tf.function
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
+    input = tf.concat([enc_out, answers[:,:-1,:]], 1)
     with tf.GradientTape() as tape:
-      probs = self.call(enc_out, answers[:,:-1,:])
+      probs = self.call(input)
       loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -204,7 +206,8 @@ class discriminator_supervised(tf.keras.Model):
     target_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
     out_tokens = []
     for i in range(seq_len - 1):
-      probs = self.call(enc_out, target_embed)
+      input = tf.concat([enc_out, target_embed], 1)
+      probs = self.call(input)
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
       last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
       out_tokens.append(last_tokens)
