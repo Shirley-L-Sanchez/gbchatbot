@@ -1,3 +1,7 @@
 .idea
 env
 data/qa
+code/QApairs.csv
+code/QAsentences.csv
+code/discriminator_supervised_saved_model
+code/gan_saved_model

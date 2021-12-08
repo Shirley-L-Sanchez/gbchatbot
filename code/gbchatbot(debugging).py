@@ -172,9 +172,9 @@ class discriminator_supervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
     
+  @tf.function
   def call(self, input):
-    enc_out = input[:, :70, :]
-    target = input[:, 70:, :]
+    enc_out, target = input[0], input[1]
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
     dense_out = self.dense(dec_out)
@@ -192,12 +192,13 @@ class discriminator_supervised(tf.keras.Model):
     mask = tf.where(ids==0, 0, 1)
     input = tf.concat([enc_out, answers[:,:-1,:]], 1)
     with tf.GradientTape() as tape:
-      probs = self.call(input)
+      probs = self.call([enc_out, answers[:,:-1,:]])
       loss = self.loss(probs, ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
     return loss, 0
-   
+
+  @tf.function
   def generate_answer(self, query, target_start_token_id, BERT, tokenizer):
     query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
     enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()       
@@ -206,8 +207,7 @@ class discriminator_supervised(tf.keras.Model):
     target_embed =  model(**dec_in_tokens).hidden_states[0].detach().numpy()
     out_tokens = []
     for i in range(seq_len - 1):
-      input = tf.concat([enc_out, target_embed], 1)
-      probs = self.call(input)
+      probs = self.call([enc_out, target_embed])
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
       last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
       out_tokens.append(last_tokens)
@@ -281,6 +281,19 @@ batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
 train(X_train, y_train)
+
+# discriminator_supervised.compile(optimizer="Adam", loss='binary_crossentropy', metrics=['accuracy'])
+# setup so that things can be saved
+real = np.ones((batch_size,1))
+batch_questions_labeled = tokenizer(X_train[0:batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+batch_questions_unlabeled = tokenizer(X_train[batch_size-num_unlabeled:batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+batch_answers = tokenizer(y_train[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+z = np.random.normal(0,1,(num_unlabeled,z_dim))
+fake_questions = generator.predict(z)
+BERT_output = model(**batch_questions_labeled).hidden_states[-1].detach().numpy()
+BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
+discriminator_supervised.predict([BERT_output, BERT_embeddings[:,:-1,:]])
+
 discriminator_supervised.save('./discriminator_supervised_saved_model', save_format='tf')
 gan.save('./gan_saved_model', save_format='tf')
 
