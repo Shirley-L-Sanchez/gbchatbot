@@ -258,10 +258,9 @@ def train(questions, answers,batch_size = 100, num_unlabeled = 30):
   d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_out, BERT_embeddings, answers['input_ids'])
   
   BERT_output = model(**batch_questions_unlabeled).hidden_states
-  BERT_out = BERT_output[-1].detach().numpy()
   
   #run batch_questions_unlabeled through BERT to get the output of BERT
-  d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_out,real[:num_unlabeled])
+  d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_output,real[:num_unlabeled])
   d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
   d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
 
