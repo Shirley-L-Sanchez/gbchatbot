@@ -170,7 +170,7 @@ class discriminator_supervised(tf.keras.Model):
     self.shared_layers = shared_layers
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
-    self.build(input_shape=(70, 768))
+    self.build(input_shape=(None, 70, 768))
   
   def call(self, enc_out, target=None):
     X = self.shared_layers(enc_out)
