@@ -223,7 +223,6 @@ class discriminator_supervised(tf.keras.Model):
             target_embedd = tf.concat([dec_in, last_embed], axis=1)
         return out_tokens
 
-
 """Let's create the models!"""
 
 # shared base
