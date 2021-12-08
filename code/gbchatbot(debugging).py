@@ -10,6 +10,7 @@ Original file is located at
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
+import tensorflow
 from tensorflow.keras import layers
 from transformers import BertTokenizer, BertModel
 
@@ -42,6 +43,7 @@ import torch
 
 #hyperparameters
 batch_size = 100
+num_unlabeled = 30
 seq_len = 70
 hidden_dim = 768
 vocab_size = 30522
@@ -59,15 +61,22 @@ def pad_to_seq_len(questions):
     tokens.append('[PAD]')
   return ' '.join(x for x in tokens)
 
-data = pd.read_csv('./QApairs.csv')
+data = pd.read_csv('./QAsentences.csv')
 questions, answers = list(data['questions']), list(data['answers'])
 #questions = [pad_to_seq_len(x) for x in questions]
-X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_size=0.20, random_state=42)
+#only train on 100 questions
+X_train, X_test, y_train, y_test = train_test_split(questions[-125:], answers[-125:], test_size=0.20, random_state=42)
 
 """Let's take a look at the preprocessed data!"""
 
 print(X_train[:5])
-X_train, X_test, y_train, y_test = X_train[-200:], X_test[-200:], y_train[-200:], y_test[-200:]
+
+"""Let's set up the pre-trained BERT model!"""
+
+from transformers import BertTokenizer, BertModel
+tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
+model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
+
 
 """Let's build the shared layers between the seq2seq and GAN model."""
 
@@ -131,6 +140,8 @@ class TransformerDecoder(tf.keras.Model):
                 layers.Dense(embed_dim),
             ]
         )
+        answers = tokenizer(y_train[0:batch_size - num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+        self.answers_embeddings = model(**answers).hidden_states[0].detach().numpy()
 
     def causal_attention_mask(self, batch_size, n_dest, n_src, dtype):
         """Masks the upper half of the dot product matrix in self attention.
@@ -148,7 +159,8 @@ class TransformerDecoder(tf.keras.Model):
         )
         return tf.tile(mask, mult)
 
-    def call(self, target, enc_out):
+    def call(self, enc_out):
+        target = self.answers_embeddings
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -166,15 +178,12 @@ class discriminator_supervised(tf.keras.Model):
     super(discriminator_supervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
     self.shared_layers = shared_layers
-    self.inputs = Input(shape=[seq_len, hidden_dim])
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
-
-
   
-  def call(self, target, enc_out):
+  def call(self, enc_out):
     X = self.shared_layers(enc_out)
-    X = self.decoder.call(target, X)
+    X = self.decoder(X)
     X = self.dense(X)
     return X
 
@@ -184,11 +193,11 @@ class discriminator_supervised(tf.keras.Model):
     loss = tf.reduce_mean(loss)
     return loss
   
-  def train_on_batch(self, enc_out, answers, ids):
+  def train_on_batch(self, enc_out, ids):
     mask = tf.where(ids==0, 0, 1)
     with tf.GradientTape() as tape:
-      probs = self(answers[:,:-1,:], enc_out)
-      loss = self.loss(probs, ids[:,1:], mask[:,1:])
+      probs = self(enc_out)
+      loss = self.loss(probs[:,1:], ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
     return loss, 0
@@ -207,12 +216,6 @@ gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metri
 #seq2seq
 discriminator_supervised = discriminator_supervised(shared_layers)
 
-"""Let's set up the pre-trained BERT model!"""
-
-from transformers import BertTokenizer, BertModel
-tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
-model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
-
 """Let's train the GBchatbot!"""
 
 supervised_losses = []
@@ -220,69 +223,38 @@ iteration_checkpoints = []
 accuracies = []
 val_losses = []
 
-def train(questions, answers,batch_size,sample_interval, num_unlabeled):
+def train(questions, answers,batch_size = 100, num_unlabeled = 30):
 
   real = np.ones((batch_size,1))
   fake = np.zeros((batch_size,1))
 
-  for i in range(0, len(questions), batch_size):
-    if (i + batch_size) < len(questions):
-      def tokenizer_output_preprocessing(tokenizer_output):
-        #modify input_ids
-        a = tokenizer_output['input_ids']
-        b = torch.zeros([len(a), seq_len], dtype=torch.int32)
-        for i in range(len(b)): 
-          b[i] = torch.cat((a[i], torch.zeros([seq_len - len(a[i])], dtype=torch.int32)), 0)
-        tokenizer_output['input_ids'] = b
-        #attention mask
-        a = tokenizer_output['attention_mask']
-        b = torch.zeros([len(a), seq_len], dtype=torch.int32)
-        for i in range(len(b)): 
-          b[i] = torch.cat((a[i], torch.zeros([seq_len - len(a[i])], dtype=torch.int32)), 0)
-        tokenizer_output['attention_mask'] = b
-        return tokenizer_output
+  batch_questions_labeled = tokenizer(questions[0:batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+  batch_questions_unlabeled = tokenizer(questions[batch_size-num_unlabeled:batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
+
+  z = np.random.normal(0,1,(num_unlabeled,z_dim))
+  fake_questions = generator.predict(z)
+
+  BERT_output = model(**batch_questions_labeled).hidden_states
+  BERT_out = BERT_output[-1].detach().numpy()
   
-      batch_questions_labeled = tokenizer(questions[i:i+batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
-      batch_questions_unlabeled = tokenizer(questions[i+batch_size-num_unlabeled:i+batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
-      batch_answers = tokenizer(answers[i:i+batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+  answers = tokenizer(y_train[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_out, answers['input_ids'])
+  
+  BERT_output = model(**batch_questions_unlabeled).hidden_states
+  BERT_out = BERT_output[-1].detach().numpy()
+  
+  #run batch_questions_unlabeled through BERT to get the output of BERT
+  d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_out,real[:num_unlabeled])
+  d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
+  d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
 
-      z = np.random.normal(0,1,(num_unlabeled,z_dim))
-      fake_questions = generator.predict(z)
+  z = np.random.normal(0,1,(num_unlabeled,z_dim))
+  generator_loss, _ = gan.train_on_batch(z,real[:num_unlabeled])
 
-      BERT_output = model(**batch_questions_labeled).hidden_states
-      BERT_out = BERT_output[-1].detach().numpy()
-      
-      
-      BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
-
-      d_supervised_loss,accuracy = discriminator_supervised.train_on_batch(BERT_out, BERT_embeddings, batch_answers['input_ids'])
-      
-      BERT_output = model(**batch_questions_unlabeled).hidden_states
-      BERT_out = BERT_output[-1].detach().numpy()
-      
-      #run batch_questions_unlabeled through BERT to get the output of BERT
-      d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_out,real[:num_unlabeled])
-      d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
-      d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
-
-      z = np.random.normal(0,1,(num_unlabeled,z_dim))
-      fake_imgs = generator.predict(z) #??
-      generator_loss, _ = gan.train_on_batch(z,real[:num_unlabeled])
-
-      
-      if(i+1) % sample_interval ==0:
-        #supervised_losses.append(d_supervised_loss)
-        #accuracies.append(100*accuracy)
-        #iteration_checkpoints.append(i+1)
-        #val_loss = discriminator_supervised.evaluate(x=X_test,y=y_test,verbose=0)
-        #val_losses.append(val_loss[0])
-        print("Iteration No.:",i+1,end=",")
-        print("Discriminator Supervised Loss:",d_supervised_loss,end=',')
-        print('Generator Loss:',generator_loss,end=",")
-        print('Discriminator Unsupervised Loss:',d_unsupervised_loss,sep=',')
-        #print('val_loss:',val_loss,sep=',')
-        #print('Accuracy Supervised:',100*accuracy)
-        #sample_images(generator)
+  print("Epoch No.:",1,end=",")
+  print("Discriminator Supervised Loss:",d_supervised_loss,end=',')
+  print('Generator Loss:',generator_loss,end=",")
+  print('Discriminator Unsupervised Loss:',d_unsupervised_loss,sep=',')
 
 """Remember that num_unlabeled should be less than batch_size."""
 
@@ -290,20 +262,16 @@ iterations = 6000
 batch_size = 100
 sample_interval = 1
 num_unlabeled = 30
-train(X_train, y_train,batch_size,sample_interval, num_unlabeled)
-#discriminator_supervised.build(input_shape=(seq_len, hidden_dim))
-#discriminator_supervised.save('./discriminator_supervised_model', save_format='tf')
-#gan.build(input_shape=(num_unlabeled, z_dim))
-#gan.save('./gan', save_format='tf')
+train(X_train, y_train)
+discriminator_supervised.build(input_shape=(batch_size-num_unlabeled, seq_len, hidden_dim))
+discriminator_supervised.save('./discriminator_supervised_saved_model', save_format='tf')
+gan.build(input_shape=(num_unlabeled, z_dim))
+gan.save('./gan_saved_model', save_format='tf')
 
-def build_seq_to_seq():
-  model = Sequential()
-  model.add(shared_layers)
-  model.add(discriminator_supervised)
-  model.add(Activation('softmax'))
-  return model
+model = tf.keras.models.load_model('./discriminator_supervised_saved_model')
+print("Model 1 loaded")
+model.summary()
 
-seq_to_seq_model =  build_seq_to_seq().compile(loss='sparse_categorical_crossentropy',
-                         metrics=['accuracy'],
-                         optimizer=Adam())
-seq_to_seq_model.save('./seq_to_seq', save_format='tf')
+model2 = tf.keras.models.load_model('./gan_saved_model')
+print("Model 2 loaded")
+model2.summary()
