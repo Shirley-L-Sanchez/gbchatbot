@@ -227,6 +227,10 @@ gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metri
 #seq2seq
 discriminator_supervised = discriminator_supervised(shared_layers)
 
+from transformers import BertTokenizer, BertModel
+tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
+model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
+
 """Let's train the GBchatbot!"""
 
 supervised_losses = []
