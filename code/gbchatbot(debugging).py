@@ -173,7 +173,7 @@ class discriminator_supervised(tf.keras.Model):
     self.dense = Dense(vocab_size, activation="softmax")
     
   @tf.function(input_signature=[tf.TensorSpec((None, seq_len, hidden_dim), tf.float32)])
-  def call(self, enc_out, target=None):
+  def call(self, enc_out, target=tf.constant(0, shape=(None, 1, hidden_dim)):
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
     dense_out = self.dense(dec_out)
