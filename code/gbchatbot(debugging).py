@@ -250,7 +250,7 @@ def train(questions, answers,batch_size = 100):
 
   BERT_output = model(**batch_questions_labeled).hidden_states[-1].detach().numpy()
   BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
-  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_output, BERT_embeddings, answers['input_ids'])
+  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_output, BERT_embeddings, batch_answers['input_ids'])
   
   BERT_output = model(**batch_questions_unlabeled).hidden_states[-1].detach().numpy()
   #run batch_questions_unlabeled through BERT to get the output of BERT
