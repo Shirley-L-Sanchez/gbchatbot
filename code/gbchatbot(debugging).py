@@ -164,25 +164,28 @@ class TransformerDecoder(tf.keras.layers.Layer):
         return ffn_out_norm
 
 class discriminator_supervised(tf.keras.Model):
-  def __init__(self, shared_layers, inputs=Input(shape=(seq_len, hidden_dim))):
+  def __init__(self, shared_layers):
     super(discriminator_supervised, self).__init__()
     self.optimizer = Adam(learning_rate=0.001)
     self.shared_layers = shared_layers
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
-  
+    
+  @tf.function
   def call(self, enc_out, target=None):
     X = self.shared_layers(enc_out)
     dec_out = self.decoder.call(X, target)
     dense_out = self.dense(dec_out)
     return dense_out
 
+  @tf.function
   def loss(self, prbs, labels, mask):
     scce = tf.keras.losses.SparseCategoricalCrossentropy(reduction=tf.keras.losses.Reduction.NONE)
     loss = scce(labels, prbs, sample_weight=mask)
     loss = tf.reduce_mean(loss)
     return loss
-  
+
+  @tf.function
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
     with tf.GradientTape() as tape:
