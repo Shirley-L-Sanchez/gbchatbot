@@ -42,27 +42,18 @@ import torch
 
 #hyperparameters
 batch_size = 100
+num_unlabeled = 30
 seq_len = 70
 hidden_dim = 768
 vocab_size = 30522
 z_dim = 100
 sentence_shape = (seq_len, hidden_dim)
-num_unlabeled = 30
 
 
 """Let's start by extracting and preprocessing the data."""
 
-def pad_to_seq_len(questions):
-  tokens = questions.split(' ')
-  num_tokens = len(tokens)
-  num_tokens_left = seq_len - num_tokens
-  for i in range(num_tokens_left):
-    tokens.append('[PAD]')
-  return ' '.join(x for x in tokens)
-
 data = pd.read_csv('./QApairs.csv')
 questions, answers = list(data['questions']), list(data['answers'])
-#questions = [pad_to_seq_len(x) for x in questions]
 X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_size=0.20, random_state=42)
 
 """Let's take a look at the preprocessed data!"""
@@ -250,7 +241,7 @@ def train(questions, answers,batch_size = 100):
 
   real = np.ones((batch_size,1))
   fake = np.zeros((batch_size,1))
-
+  
   batch_questions_labeled = tokenizer(questions[0:batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
   batch_questions_unlabeled = tokenizer(questions[batch_size-num_unlabeled:batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
   batch_answers = tokenizer(answers[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
