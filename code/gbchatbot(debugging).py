@@ -214,7 +214,7 @@ class discriminator_supervised(tf.keras.Model):
 """Let's create the models!"""
 
 #shared base
-shared_layers = build_shared_layers(sentence_shape)
+shared_layers = build_shared_layers(hidden_dim)
 #GAN 
 discriminator_unsupervised = build_discriminator_unsupervised(shared_layers)
 discriminator_unsupervised.compile(optimizer = Adam(learning_rate=0.001),loss='binary_crossentropy',metrics=['accuracy'])
