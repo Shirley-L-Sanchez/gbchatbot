@@ -61,6 +61,12 @@ X_train, X_test, y_train, y_test = train_test_split(questions, answers, test_siz
 print(X_train[:5])
 X_train, X_test, y_train, y_test = X_train[-200:], X_test[-200:], y_train[-200:], y_test[-200:]
 
+"""Let's set up the pre-trained BERT model!"""
+
+from transformers import BertTokenizer, BertModel
+tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
+model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
+
 """Let's build the shared layers between the seq2seq and GAN model."""
 
 def build_shared_layers(sentence_shape):
@@ -106,7 +112,7 @@ num_heads = 12
 embed_dim = hidden_dim
 feed_forward_dim = 256
 
-class TransformerDecoder(tf.keras.layers.Layer):
+class TransformerDecoder(tf.keras.Model):
     def __init__(self, embed_dim, num_heads, feed_forward_dim, dropout_rate=0.1):
         super(TransformerDecoder, self).__init__()
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -126,7 +132,6 @@ class TransformerDecoder(tf.keras.layers.Layer):
 
     def causal_attention_mask(self, batch_size, n_dest, n_src, dtype):
         """Masks the upper half of the dot product matrix in self attention.
-
         This prevents flow of information from future tokens to current token.
         1's in the lower triangle, counting from the lower right corner.
         """
@@ -140,7 +145,21 @@ class TransformerDecoder(tf.keras.layers.Layer):
         )
         return tf.tile(mask, mult)
 
-    def call(self, enc_out, target):
+    def call(self, enc_out):
+        target = self.answers_embeddings
+        input_shape = tf.shape(target)
+        batch_size = input_shape[0]
+        seq_len = input_shape[1] 
+        causal_mask = self.causal_attention_mask(batch_size, seq_len, seq_len, tf.bool)
+        target_att = self.self_att(target, target, attention_mask=causal_mask)
+        target_norm = self.layernorm1(target + self.self_dropout(target_att))
+        enc_out = self.enc_att(target_norm, enc_out)
+        enc_out_norm = self.layernorm2(self.enc_dropout(enc_out) + target_norm)
+        ffn_out = self.ffn(enc_out_norm)
+        ffn_out_norm = self.layernorm3(enc_out_norm + self.ffn_dropout(ffn_out))
+        return ffn_out_norm
+    
+    def gen(self, enc_out, target):
         input_shape = tf.shape(target)
         batch_size = input_shape[0]
         seq_len = input_shape[1] 
@@ -161,36 +180,32 @@ class DiscriminatorSupervised(tf.keras.Model):
     self.decoder = TransformerDecoder(embed_dim, num_heads, feed_forward_dim)
     self.dense = Dense(vocab_size, activation="softmax")
   
-  @tf.function(input_signature=[tf.TensorSpec([None, 2*seq_len-1, hidden_dim], tf.float32)])
-  def call(self, input):
-    enc_out = input[:, :70, :]
-    target = input[:, 70:, :]
+  def call(self, enc_out):
     X = self.shared_layers(enc_out)
-    dec_out = self.decoder.call(X, target)
-    dense_out = self.dense(dec_out)
-    return dense_out
+    X = self.decoder(X)
+    X = self.dense(X)
+    return X
 
-  @tf.function
   def loss(self, prbs, labels, mask):
     scce = tf.keras.losses.SparseCategoricalCrossentropy(reduction=tf.keras.losses.Reduction.NONE)
     loss = scce(labels, prbs, sample_weight=mask)
     loss = tf.reduce_mean(loss)
     return loss
-
-  @tf.function
+  
   def train_on_batch(self, enc_out, answers, ids):
     mask = tf.where(ids==0, 0, 1)
-    input = tf.concat([enc_out, answers[:,:-1,:]], 1)
+    answers = tokenizer(y_train[0:batch_size - num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+    self.decoder.answers_embeddings = model(**answers).hidden_states[0].detach().numpy()
     with tf.GradientTape() as tape:
-      probs = self.call(input)
-      loss = self.loss(probs, ids[:,1:], mask[:,1:])
+      probs = self.call(enc_out)
+      loss = self.loss(probs[:,1:], ids[:,1:], mask[:,1:])
     gradients = tape.gradient(loss, self.trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
     return loss, 0
 
   def pred(self, enc_out, target):
     X = self.shared_layers(enc_out)
-    dec_out = self.decoder.call(X, target)
+    dec_out = self.decoder.gen(X, target)
     dense_out = self.dense(dec_out)
     return dense_out
    
@@ -203,6 +218,7 @@ class DiscriminatorSupervised(tf.keras.Model):
     out_tokens = np.array([[]], dtype=np.int32)
     for i in range(6):
       probs = self.pred(enc_out, target_embed)
+      probs = probs.numpy()
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
       last_tokens = tf.expand_dims(tokens[:, -1], axis=-1).numpy()
       out_tokens = np.concatenate((out_tokens, last_tokens), axis=-1)
@@ -227,10 +243,6 @@ gan.compile(optimizer=Adam(learning_rate=0.001),loss='binary_crossentropy',metri
 discriminator_supervised = DiscriminatorSupervised(shared_layers)
 # discriminator_supervised.build((batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
 
-from transformers import BertTokenizer, BertModel
-tokenizer = BertTokenizer.from_pretrained('distilbert-base-uncased')
-model = BertModel.from_pretrained('distilbert-base-uncased', output_hidden_states=True)
-
 """Let's train the GBchatbot!"""
 
 supervised_losses = []
@@ -245,17 +257,15 @@ def train(questions, answers,batch_size = 100):
   
   batch_questions_labeled = tokenizer(questions[0:batch_size-num_unlabeled], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
   batch_questions_unlabeled = tokenizer(questions[batch_size-num_unlabeled:batch_size], padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
-  batch_answers = tokenizer(answers[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
 
   z = np.random.normal(0,1,(num_unlabeled,z_dim))
   fake_questions = generator.predict(z)
 
   BERT_output = model(**batch_questions_labeled).hidden_states[-1].detach().numpy()
-  BERT_embeddings = model(**batch_answers).hidden_states[0].detach().numpy()
-  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_output, BERT_embeddings, batch_answers['input_ids'])
+  answers = tokenizer(y_train[0:batch_size-num_unlabeled], return_tensors="pt", padding='max_length', truncation=True, max_length=seq_len)
+  d_supervised_loss,_ = discriminator_supervised.train_on_batch(BERT_output, answers['input_ids'])
   
   BERT_output = model(**batch_questions_unlabeled).hidden_states[-1].detach().numpy()
-  #run batch_questions_unlabeled through BERT to get the output of BERT
   d_unsupervised_loss_real, _ = discriminator_unsupervised.train_on_batch(BERT_output,real[:num_unlabeled])
   d_unsupervised_loss_fake, _ = discriminator_unsupervised.train_on_batch(fake_questions,fake[:num_unlabeled])
   d_unsupervised_loss = 0.5*np.add(d_unsupervised_loss_real,d_unsupervised_loss_fake)
@@ -281,10 +291,11 @@ discriminator_supervised.save_weights('./discriminator_supervised_saved_weights'
 sl = build_shared_layers(sentence_shape)
 ds = DiscriminatorSupervised(sl)
 status = ds.load_weights('./discriminator_supervised_saved_weights')
-ds.build((batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
+ds.build((batch_size-num_unlabeled, seq_len, hidden_dim))
 print("Model 1 loaded")
 ds.summary()
 
 out = ds.generate_answer([X_test[0]], 101, model, tokenizer)
 print()
+
 
