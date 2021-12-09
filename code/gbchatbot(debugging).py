@@ -198,16 +198,17 @@ class DiscriminatorSupervised(tf.keras.Model):
     query_tokens = tokenizer(query, padding='max_length', truncation=True, return_tensors='pt', max_length=seq_len)
     enc_out = BERT(**query_tokens).hidden_states[-1].detach().numpy()       
     bs = tf.shape(enc_out)[0]
-    target_tokens = {'input_ids': torch.from_numpy(np.ones((bs, 1), dtype=tf.int32) * target_start_token_id)}
+    target_tokens = {'input_ids': torch.from_numpy(np.ones((bs, 1), dtype=np.int32) * target_start_token_id)}
     target_embed =  BERT(**target_tokens).hidden_states[0].detach().numpy()
-    out_tokens = []
-    for i in range(seq_len - 1):
+    out_tokens = np.array([[]], dtype=np.int32)
+    for i in range(6):
       probs = self.pred(enc_out, target_embed)
       tokens = tf.argmax(probs, axis=-1, output_type=tf.int32)
-      last_tokens = tf.expand_dims(tokens[:, -1], axis=-1)
-      out_tokens.append(last_tokens)
-      last_embed =  BERT(**last_tokens).hidden_states[0].detach().numpy()
-      target_embed = tf.concat([dec_in, last_embed], axis=1)
+      last_tokens = tf.expand_dims(tokens[:, -1], axis=-1).numpy()
+      out_tokens = np.concatenate((out_tokens, last_tokens), axis=-1)
+      enc_in = {'input_ids': torch.from_numpy(last_tokens)}
+      last_embed =  BERT(**enc_in).hidden_states[0].detach().numpy()
+      target_embed = tf.concat([target_embed, last_embed], axis=1)
     return out_tokens
 
 """Let's create the models!"""
@@ -284,5 +285,6 @@ ds.build((batch_size-num_unlabeled, 2*seq_len-1, hidden_dim))
 print("Model 1 loaded")
 ds.summary()
 
-ds.generate_answer([X_test[0]], 101, model, tokenizer)
+out = ds.generate_answer([X_test[0]], 101, model, tokenizer)
+print()
 
