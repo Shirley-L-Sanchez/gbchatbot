@@ -1,3 +1,5 @@
+Runable Code in code/gbchatbot.py
+
 **GB Chatbot**
 Team Members: Shirley Loayza (sloayzas), Ashley Chang (achang65), Cameron Fiore (cfiore), Mandy Chang (mchang35)
 
